@@ -1,0 +1,53 @@
+name: Sync Upstream (No Merge)
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+on:
+  schedule:
+    # 北京时间凌晨 00:00 对应 UTC 16:00
+    - cron: '0 16 * * *'
+  workflow_dispatch: # 保持手动触发，方便调试
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write 
+
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync Files
+        run: |
+          git remote add upstream https://github.com/mtvpls/MoonTVPlus.git
+          git fetch upstream main
+          
+          # 仅同步文件，排除 .github 目录
+          git checkout upstream/main -- . ':!.github'
+          
+          # 提交更改
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -m "chore: safe sync from upstream $(date +'%Y-%m-%d')"
+            git push origin main
+            gh workflow run cloudflare-deploy.yml --ref main
+          else
+            echo "Everything is up to date."
+          fi
+
+      - name: 删除运行记录
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+            retain_days: 7
+            keep_minimum_runs: 6
+            token: ${{ secrets.GITHUB_TOKEN }}
